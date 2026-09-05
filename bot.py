@@ -891,7 +891,7 @@ async def auto_signals():
 # ===== ЗАПУСК =====
 async def main():
     print("=" * 50)
-    print("🚀 БОТ ДЛЯ POCKET OPTION ЗАПУЩЕН!")
+    print("🚀 БОТ ДЛЯ POCKET OPTION ЗАПУЩЕН НА RENDER!")
     print(f"👑 Админ: {ADMIN_ID} (бесплатно)")
     print(f"📊 Источник: Bybit")
     print(f"📊 Пары: {', '.join(PAIRS)}")
@@ -903,5 +903,10 @@ async def main():
     asyncio.create_task(auto_signals())
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
+# Эта функция нужна для Render, чтобы он не ругался
+def start():
+    """Точка входа для Render"""
     asyncio.run(main())
+
+if __name__ == "__main__":
+    start()
