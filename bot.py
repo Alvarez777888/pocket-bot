@@ -18,7 +18,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 # ========== КОНФИГ ==========
-TOKEN = "8651064170: AAE_Y-GY tWh rMM9kncx502pVnDe25w2qmCQ"
+TOKEN = "8651064170:AAE_Y-GYtWhrMM9kncx502pVnDe25w2qmCQ"
 ADMIN_ID = 5146620562  
 
 # Цены
