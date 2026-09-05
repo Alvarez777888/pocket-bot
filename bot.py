@@ -18,8 +18,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 # ========== КОНФИГ ==========
-TOKEN = "ТВОЙ_ТОКЕН_ОТ_BOTFATHER"
-ADMIN_ID = ТВОЙ_ID  # число, например 123456789
+TOKEN = "8651064170:AAE_Y-GYtWhrMM9kncx5O2pVnDe25w2qmCQ"
+ADMIN_ID = 5146620562  # число, например 123456789
 
 # Цены
 PRICE_YOOMONEY = 500  # 500 RUB
