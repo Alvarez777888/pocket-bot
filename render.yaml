@@ -1,5 +1,5 @@
 services:
-  - type: worker
+  - type: web
     name: pocket-bot
     runtime: python
     plan: free
