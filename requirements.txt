@@ -1,0 +1,6 @@
+aiogram
+ccxt
+pandas
+ta
+aiohttp
+yfinance

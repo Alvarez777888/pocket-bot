@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: pocket-bot
+    runtime: docker
+    repo: https://github.com/ТВОЙ_НИК/pocket-bot
+    plan: free
+    dockerfilePath: ./Dockerfile
