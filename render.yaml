@@ -1,7 +1,7 @@
 services:
   - type: web
     name: pocket-bot
-    runtime: docker
-    repo: https://github.com/ТВОЙ_НИК/pocket-bot
+    runtime: python
     plan: free
-    dockerfilePath: ./Dockerfile
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
