@@ -1,6 +1,6 @@
-aiogram
-ccxt
-pandas
-ta
-aiohttp
-yfinance
+aiogram==3.4.0
+ccxt==4.1.0
+pandas==2.0.0
+ta==0.10.2
+aiohttp==3.9.0
+yfinance==0.2.30
