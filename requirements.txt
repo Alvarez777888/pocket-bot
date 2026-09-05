@@ -1,6 +1,5 @@
 aiogram
-ccxt
+yfinance
 pandas
 ta
 aiohttp
-yfinance
