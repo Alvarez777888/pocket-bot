@@ -11,20 +11,20 @@ import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 import re
-import ccxt
+import yfinance as yf
 import logging
 
 # ========== ОТКЛЮЧАЕМ ЛОГИ ДЛЯ ЧИСТОТЫ ==========
 logging.basicConfig(level=logging.INFO)
 
 # ========== КОНФИГ ==========
-TOKEN = "8651064170:AAE_Y-GYtWhrMM9kncx5O2pVnDe25w2qmCQ"
-ADMIN_ID = 5146620562  
+TOKEN = "ТВОЙ_ТОКЕН_ОТ_BOTFATHER"
+ADMIN_ID = ТВОЙ_ID  # число, например 123456789
 
 # Цены
-PRICE_YOOMONEY = 100  # 500 RUB
+PRICE_YOOMONEY = 500  # 500 RUB
 PRICE_USDT = "10 USDT"
-PRICE_STARS = 80
+PRICE_STARS = 100
 
 # Реквизиты оплаты (ЗАМЕНИ НА СВОИ)
 YOOMONEY_WALLET = "410011234567890"
@@ -35,14 +35,14 @@ TIMEFRAME = "5m"
 RSI_OVERSOLD = 30
 RSI_OVERBOUGHT = 70
 
-# Bybit
-bybit = ccxt.bybit({
-    'enableRateLimit': True,
-    'options': {'defaultType': 'spot'}
-})
-
-# Пары для анализа
-PAIRS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT']
+# Пары для анализа (Yahoo Finance тикеры)
+PAIRS = {
+    'BTC/USDT': 'BTC-USD',
+    'ETH/USDT': 'ETH-USD',
+    'SOL/USDT': 'SOL-USD',
+    'XRP/USDT': 'XRP-USD',
+    'DOGE/USDT': 'DOGE-USD'
+}
 
 # Демо и рефералка
 DEMO_DAYS = 3
@@ -253,19 +253,29 @@ def get_referral_stats(user_id):
 def get_referral_link(user_id):
     return f"https://t.me/{bot.username}?start={user_id}"
 
-# ========== СИГНАЛЫ ==========
-def get_pocket_signal(pair, user_id):
+# ========== СИГНАЛЫ ЧЕРЕЗ YAHOO FINANCE ==========
+def get_pocket_signal(pair_key, user_id):
+    """
+    Получает сигнал для Pocket Option через Yahoo Finance
+    pair_key: ключ из словаря PAIRS (например 'BTC/USDT')
+    """
     if not check_access(user_id):
         return None
     
     try:
-        ohlcv = bybit.fetch_ohlcv(pair, timeframe='5m', limit=50)
-        if len(ohlcv) < 30:
+        ticker = PAIRS.get(pair_key)
+        if not ticker:
             return None
         
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        close = df['close']
+        # Скачиваем данные с Yahoo Finance
+        df = yf.download(ticker, period="1h", interval="5m", progress=False)
         
+        if len(df) < 30:
+            return None
+        
+        close = df['Close']
+        
+        # Индикаторы
         rsi = RSIIndicator(close).rsi().iloc[-1]
         ema10 = EMAIndicator(close, window=10).ema_indicator().iloc[-1]
         ema30 = EMAIndicator(close, window=30).ema_indicator().iloc[-1]
@@ -274,35 +284,46 @@ def get_pocket_signal(pair, user_id):
         signal_direction = None
         strength = 0
         
+        # Условия для CALL (вверх)
         if rsi < RSI_OVERSOLD and current_price > ema10:
             strength += 2
             signal_direction = "CALL"
-        elif rsi > RSI_OVERBOUGHT and current_price < ema10:
+        elif rsi < RSI_OVERSOLD - 5:
+            strength += 1
+            signal_direction = "CALL"
+        
+        # Условия для PUT (вниз)
+        if rsi > RSI_OVERBOUGHT and current_price < ema10:
             strength += 2
             signal_direction = "PUT"
+        elif rsi > RSI_OVERBOUGHT + 5:
+            strength += 1
+            signal_direction = "PUT"
         
+        # Дополнительные условия
         if signal_direction == "CALL" and ema10 > ema30:
             strength += 1
         elif signal_direction == "PUT" and ema10 < ema30:
             strength += 1
         
         if strength >= 2 and signal_direction:
+            # Сохраняем сигнал
             cursor.execute("""
                 INSERT INTO signals (user_id, pair, direction, entry_price, rsi)
                 VALUES (?, ?, ?, ?, ?)
-            """, (user_id, pair, signal_direction, 
-                  round(current_price, 4), round(rsi, 1)))
+            """, (user_id, pair_key, signal_direction, 
+                  round(current_price, 2), round(rsi, 1)))
             conn.commit()
             
             return {
-                'pair': pair.replace('/USDT', ''),
+                'pair': pair_key,
                 'direction': signal_direction,
-                'entry': round(current_price, 4),
+                'entry': round(current_price, 2),
                 'rsi': round(rsi, 1),
                 'strength': strength
             }
     except Exception as e:
-        print(f"Ошибка сигнала {pair}: {e}")
+        print(f"Ошибка сигнала {pair_key}: {e}")
         return None
     return None
 
@@ -393,10 +414,10 @@ async def start_cmd(msg: types.Message):
         f"{admin_text}"
         "\n📌 <b>Что умеет бот:</b>\n"
         "• Сигналы для Pocket Option (CALL/PUT)\n"
-        "• Анализ через Bybit\n"
+        "• Анализ через Yahoo Finance\n"
         "• Экономический календарь\n"
         "• Статистика сделок\n\n"
-        f"📊 <b>Мониторим:</b> {', '.join([p.replace('/USDT', '') for p in PAIRS])}\n\n"
+        f"📊 <b>Мониторим:</b> {', '.join(PAIRS.keys())}\n\n"
         "🎁 <b>Демо:</b> 3 дня бесплатно!\n"
         f"💰 <b>Цена:</b> {PRICE_YOOMONEY}₽ / {PRICE_USDT} / {PRICE_STARS} Stars\n"
         "🔄 Действует 30 дней\n\n"
@@ -460,20 +481,20 @@ async def handle_callback(callback: types.CallbackQuery):
             await callback.answer()
             return
         
-        await callback.message.answer("🔍 Ищу сигнал для Pocket Option на Bybit...")
+        await callback.message.answer("🔍 Ищу сигнал для Pocket Option на Yahoo Finance...")
         
-        for pair in PAIRS:
-            signal = get_pocket_signal(pair, user_id)
+        for pair_key in PAIRS.keys():
+            signal = get_pocket_signal(pair_key, user_id)
             if signal:
                 emoji = "🟢" if signal['direction'] == "CALL" else "🔴"
                 text = (
                     f"📊 <b>СИГНАЛ ДЛЯ POCKET OPTION</b>\n"
                     f"━━━━━━━━━━━━━━━━\n"
-                    f"💰 {signal['pair']}/USDT\n"
+                    f"💰 {signal['pair']}\n"
                     f"{emoji} <b>{signal['direction']}</b>\n"
                     f"💵 Цена входа: <b>${signal['entry']}</b>\n"
                     f"📉 RSI: {signal['rsi']} | Сила: {signal['strength']}/3\n"
-                    f"📊 Источник: <b>Bybit</b>\n"
+                    f"📊 Источник: <b>Yahoo Finance</b>\n"
                     f"⏰ {datetime.now().strftime('%H:%M')}\n"
                     f"━━━━━━━━━━━━━━━━\n"
                     f"🔥 <b>Рекомендация:</b>\n"
@@ -694,7 +715,7 @@ async def handle_callback(callback: types.CallbackQuery):
             "ℹ️ <b>О боте</b>\n\n"
             "🤖 <b>Версия:</b> 4.0 PO\n"
             "📊 <b>Для:</b> Pocket Option\n"
-            "📊 <b>Источник:</b> Bybit\n"
+            "📊 <b>Источник:</b> Yahoo Finance\n"
             "📈 <b>Винрейт:</b> 60-70%\n\n"
             f"💰 <b>Цены:</b>\n"
             f"• Юмани: {PRICE_YOOMONEY} ₽\n"
@@ -865,14 +886,14 @@ async def auto_signals():
         
         for user_id in active_users:
             user_id = user_id[0]
-            for pair in PAIRS:
-                signal = get_pocket_signal(pair, user_id)
+            for pair_key in PAIRS.keys():
+                signal = get_pocket_signal(pair_key, user_id)
                 if signal:
                     emoji = "🟢" if signal['direction'] == "CALL" else "🔴"
                     text = (
                         f"📊 <b>АВТО-СИГНАЛ PO</b>\n"
                         f"━━━━━━━━━━━━━━━━\n"
-                        f"💰 {signal['pair']}/USDT\n"
+                        f"💰 {signal['pair']}\n"
                         f"{emoji} <b>{signal['direction']}</b>\n"
                         f"💵 Цена: <b>${signal['entry']}</b>\n"
                         f"📉 RSI: {signal['rsi']} | Сила: {signal['strength']}/3\n"
@@ -891,10 +912,10 @@ async def auto_signals():
 # ===== ЗАПУСК =====
 async def main():
     print("=" * 50)
-    print("🚀 БОТ ДЛЯ POCKET OPTION ЗАПУЩЕН НА RENDER!")
+    print("🚀 БОТ ДЛЯ POCKET OPTION ЗАПУЩЕН!")
     print(f"👑 Админ: {ADMIN_ID} (бесплатно)")
-    print(f"📊 Источник: Bybit")
-    print(f"📊 Пары: {', '.join(PAIRS)}")
+    print(f"📊 Источник: Yahoo Finance")
+    print(f"📊 Пары: {', '.join(PAIRS.keys())}")
     print(f"💰 Цены: Юмани {PRICE_YOOMONEY}₽ | USDT {PRICE_USDT} | Stars {PRICE_STARS}")
     print(f"🎁 Демо: {DEMO_DAYS} дня")
     print(f"👥 Рефералка: {REFERRAL_BONUS}%")
@@ -903,7 +924,6 @@ async def main():
     asyncio.create_task(auto_signals())
     await dp.start_polling(bot)
 
-# Эта функция нужна для Render, чтобы он не ругался
 def start():
     """Точка входа для Render"""
     asyncio.run(main())
