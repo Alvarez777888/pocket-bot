@@ -2,8 +2,6 @@ import asyncio
 import sqlite3
 import hashlib
 import aiohttp
-import socket
-import uuid
 import os
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
@@ -14,21 +12,25 @@ from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 import re
 import ccxt
+import logging
+
+# ========== ОТКЛЮЧАЕМ ЛОГИ ДЛЯ ЧИСТОТЫ ==========
+logging.basicConfig(level=logging.INFO)
 
 # ========== КОНФИГ ==========
-TOKEN = "ТВОЙ_ТОКЕН_ОТ_BOTFATHER"
-ADMIN_ID = ТВОЙ_ID  # число, без кавычек
+TOKEN = "8651064170: AAE_Y-GY tWh rMM9kncx502pVnDe25w2qmCQ"
+ADMIN_ID = 5146620562  
 
 # Цены
-PRICE_YOOMONEY = 500
+PRICE_YOOMONEY = 100  # 500 RUB
 PRICE_USDT = "10 USDT"
-PRICE_STARS = 100
+PRICE_STARS = 80
 
-# Реквизиты
+# Реквизиты оплаты (ЗАМЕНИ НА СВОИ)
 YOOMONEY_WALLET = "410011234567890"
 USDT_ADDRESS = "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 
-# Настройки PO
+# Настройки Pocket Option
 TIMEFRAME = "5m"
 RSI_OVERSOLD = 30
 RSI_OVERBOUGHT = 70
@@ -39,6 +41,7 @@ bybit = ccxt.bybit({
     'options': {'defaultType': 'spot'}
 })
 
+# Пары для анализа
 PAIRS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT']
 
 # Демо и рефералка
@@ -49,6 +52,7 @@ REFERRAL_BONUS = 20
 conn = sqlite3.connect("pocket_bot.db")
 cursor = conn.cursor()
 
+# Таблица пользователей
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -64,6 +68,7 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 
+# Таблица рефералов
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS referrals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +80,7 @@ CREATE TABLE IF NOT EXISTS referrals (
 )
 """)
 
+# Таблица платежей
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,6 +93,7 @@ CREATE TABLE IF NOT EXISTS payments (
 )
 """)
 
+# Таблица сделок
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +108,7 @@ CREATE TABLE IF NOT EXISTS trades (
 )
 """)
 
+# Таблица сигналов
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS signals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,10 +125,11 @@ conn.commit()
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# Делаем пользователя ADMIN_ID администратором
 cursor.execute("INSERT OR REPLACE INTO users (user_id, is_admin) VALUES (?, 1)", (ADMIN_ID,))
 conn.commit()
 
-# ========== ФУНКЦИИ ==========
+# ========== ФУНКЦИИ ЛИЦЕНЗИЙ ==========
 def generate_license(user_id):
     data = f"{user_id}_{datetime.now().timestamp()}"
     return hashlib.md5(data.encode()).hexdigest()[:16]
@@ -292,7 +301,8 @@ def get_pocket_signal(pair, user_id):
                 'rsi': round(rsi, 1),
                 'strength': strength
             }
-    except:
+    except Exception as e:
+        print(f"Ошибка сигнала {pair}: {e}")
         return None
     return None
 
@@ -425,18 +435,18 @@ async def handle_callback(callback: types.CallbackQuery):
         
         text = (
             "👑 <b>Админ-панель</b>\n\n"
-            f"👥 Всего: {total}\n"
+            f"👥 Всего пользователей: {total}\n"
             f"✅ Активных: {active}\n"
             f"🎁 Демо: {demo_active}\n"
             f"⛔ Заблокировано: {blocked}\n"
             f"👥 Рефералов: {refs}\n"
-            f"💰 Профит: ${total_profit:.2f}\n\n"
+            f"💰 Общий профит: ${total_profit:.2f}\n\n"
             "📌 <b>Команды:</b>\n"
-            "/add_license [user_id]\n"
-            "/block [user_id]\n"
-            "/unblock [user_id]\n"
-            "/broadcast [текст]\n"
-            "/pay_referrals"
+            "/add_license [user_id] — добавить лицензию\n"
+            "/block [user_id] — заблокировать\n"
+            "/unblock [user_id] — разблокировать\n"
+            "/broadcast [текст] — рассылка\n"
+            "/pay_referrals — выплатить рефералам"
         )
         await callback.message.answer(text, parse_mode='HTML')
         await callback.answer()
@@ -692,12 +702,12 @@ async def handle_callback(callback: types.CallbackQuery):
             f"• Stars: {PRICE_STARS} Stars\n\n"
             "🎁 <b>Демо:</b> 3 дня\n"
             "👥 <b>Рефералка:</b> 20%\n\n"
-            "🛡️ <b>Работает 24/7 на сервере Render.com</b>"
+            "🛡️ <b>Работает 24/7 на сервере</b>"
         )
         await callback.message.answer(text, parse_mode='HTML')
         await callback.answer()
 
-# ===== КОМАНДЫ =====
+# ===== КОМАНДЫ ПОЛЬЗОВАТЕЛЕЙ =====
 @dp.message(Command("win"))
 async def win_trade(msg: types.Message):
     user_id = msg.from_user.id
@@ -736,6 +746,38 @@ async def loss_trade(msg: types.Message):
     else:
         await msg.answer("❌ Нет активного сигнала")
 
+@dp.message(Command("referral"))
+async def referral_cmd(msg: types.Message):
+    user_id = msg.from_user.id
+    ref_link = get_referral_link(user_id)
+    stats = get_referral_stats(user_id)
+    info = get_access_info(user_id)
+    
+    text = (
+        "👥 <b>Реферальная программа</b>\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"📊 Приведено: {stats['total']}\n"
+        f"💰 Бонусов: {stats['bonus']} Stars\n"
+        f"📊 Баланс: {info['balance'] if info else 0} Stars\n\n"
+        f"🔗 <b>Твоя ссылка:</b>\n"
+        f"<code>{ref_link}</code>\n\n"
+        f"💰 Бонус: {REFERRAL_BONUS}% от платежа друга"
+    )
+    await msg.answer(text, parse_mode='HTML')
+
+@dp.message(Command("balance"))
+async def balance_cmd(msg: types.Message):
+    user_id = msg.from_user.id
+    info = get_access_info(user_id)
+    
+    if info:
+        text = f"💰 <b>Ваш баланс</b>\n━━━━━━━━━━━━━━━━\nStars: {info['balance']}\n👥 Приводи друзей и увеличивай баланс!"
+    else:
+        text = "❌ Пользователь не найден"
+    
+    await msg.answer(text, parse_mode='HTML')
+
+# ===== АДМИН-КОМАНДЫ =====
 @dp.message(Command("add_license"))
 async def add_license(msg: types.Message):
     if msg.from_user.id != ADMIN_ID:
@@ -849,14 +891,13 @@ async def auto_signals():
 # ===== ЗАПУСК =====
 async def main():
     print("=" * 50)
-    print("🚀 БОТ ДЛЯ POCKET OPTION ЗАПУЩЕН НА RENDER!")
+    print("🚀 БОТ ДЛЯ POCKET OPTION ЗАПУЩЕН!")
     print(f"👑 Админ: {ADMIN_ID} (бесплатно)")
     print(f"📊 Источник: Bybit")
     print(f"📊 Пары: {', '.join(PAIRS)}")
     print(f"💰 Цены: Юмани {PRICE_YOOMONEY}₽ | USDT {PRICE_USDT} | Stars {PRICE_STARS}")
     print(f"🎁 Демо: {DEMO_DAYS} дня")
     print(f"👥 Рефералка: {REFERRAL_BONUS}%")
-    print("🛡️ Работает 24/7!")
     print("=" * 50)
     
     asyncio.create_task(auto_signals())
